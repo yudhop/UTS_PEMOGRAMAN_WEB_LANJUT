@@ -16,6 +16,7 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
 
+    from . import models  # noqa: F401  (daftarkan model untuk ORM & migration)
     from .controllers import register_blueprints
     from .utils.errors import register_error_handlers
     from .utils.security import register_security
