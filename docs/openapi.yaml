@@ -1,0 +1,1898 @@
+openapi: 3.0.3
+info:
+  title: IoT Monitor API
+  version: 1.0.0
+  description: 'REST API MVP untuk monitoring perangkat IoT: perangkat, sensor, telemetri, aturan ambang batas, dan alert.
+
+
+    Semua response sukses berbentuk `{"data": ..., "meta": ...}` dan semua error berbentuk `{"error": {"code", "message",
+    "details"}}`. Seluruh waktu dalam UTC (ISO 8601).'
+servers:
+- url: /api/v1
+  description: Server yang sama dengan halaman ini
+tags:
+- name: Health
+- name: Users
+- name: Devices
+- name: Sensors
+- name: Telemetry
+- name: Alert Rules
+- name: Alerts
+paths:
+  /health:
+    get:
+      tags:
+      - Health
+      summary: Cek kesehatan API dan database
+      responses:
+        '200':
+          description: API sehat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Health'
+        '503':
+          description: Database tidak tersedia.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: SERVICE_UNAVAILABLE
+                  message: Database is unavailable.
+  /users:
+    get:
+      tags:
+      - Users
+      summary: Daftar user (filter, pencarian, sorting, pagination)
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PerPage'
+      - name: sort
+        in: query
+        required: false
+        description: 'Urutkan: daftar field dipisah koma, awalan `-` = descending. Field yang boleh: username, email, created_at.'
+        schema:
+          type: string
+          default: -created_at
+        example: -created_at
+      - name: q
+        in: query
+        required: false
+        description: Cari pada username/email.
+        schema:
+          type: string
+      - name: role
+        in: query
+        required: false
+        description: Filter role.
+        schema:
+          type: string
+          enum:
+          - admin
+          - operator
+          - viewer
+      responses:
+        '200':
+          description: Daftar berhalaman
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Users
+      summary: Buat user baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User dibuat
+          headers:
+            Location:
+              description: URL resource baru
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /users/{user_id}:
+    parameters:
+    - name: user_id
+      in: path
+      required: true
+      description: ID user
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      tags:
+      - Users
+      summary: Detail user
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Users
+      summary: Hapus user
+      responses:
+        '204':
+          description: Terhapus (tanpa body)
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+      - {}
+      - ApiKeyAuth: []
+      description: Ditolak dengan 409 bila user masih memiliki perangkat.
+  /devices:
+    get:
+      tags:
+      - Devices
+      summary: Daftar perangkat (filter, pencarian, sorting, pagination)
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PerPage'
+      - name: sort
+        in: query
+        required: false
+        description: 'Urutkan: daftar field dipisah koma, awalan `-` = descending. Field yang boleh: name, serial_number,
+          status, last_seen_at, created_at.'
+        schema:
+          type: string
+          default: -created_at
+        example: -created_at
+      - name: q
+        in: query
+        required: false
+        description: Cari pada nama/serial_number.
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        description: Filter status.
+        schema:
+          type: string
+          enum:
+          - active
+          - inactive
+          - maintenance
+      - name: device_type
+        in: query
+        required: false
+        description: Filter tipe.
+        schema:
+          type: string
+          enum:
+          - esp32
+          - esp8266
+          - raspberry_pi
+          - gateway
+          - other
+      - name: owner_id
+        in: query
+        required: false
+        description: Filter pemilik.
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Daftar berhalaman
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Devices
+      summary: Buat perangkat baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceInput'
+      responses:
+        '201':
+          description: Perangkat dibuat
+          headers:
+            Location:
+              description: URL resource baru
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Device'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /devices/{device_id}:
+    parameters:
+    - name: device_id
+      in: path
+      required: true
+      description: ID perangkat
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      tags:
+      - Devices
+      summary: Detail perangkat
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Device'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Devices
+      summary: Ganti seluruh field perangkat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceInput'
+      responses:
+        '200':
+          description: Berhasil diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Device'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+    patch:
+      tags:
+      - Devices
+      summary: Ubah sebagian field perangkat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevicePatch'
+      responses:
+        '200':
+          description: Berhasil diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Device'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+    delete:
+      tags:
+      - Devices
+      summary: Hapus perangkat
+      responses:
+        '204':
+          description: Terhapus (tanpa body)
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+      - {}
+      - ApiKeyAuth: []
+      description: Sensor, telemetri, aturan, dan alert milik perangkat ikut terhapus (CASCADE).
+  /sensors:
+    get:
+      tags:
+      - Sensors
+      summary: Daftar sensor (filter, pencarian, sorting, pagination)
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PerPage'
+      - name: sort
+        in: query
+        required: false
+        description: 'Urutkan: daftar field dipisah koma, awalan `-` = descending. Field yang boleh: name, sensor_type, created_at.'
+        schema:
+          type: string
+          default: name
+        example: name
+      - name: q
+        in: query
+        required: false
+        description: Cari pada nama sensor.
+        schema:
+          type: string
+      - name: device_id
+        in: query
+        required: false
+        description: Filter perangkat.
+        schema:
+          type: integer
+      - name: sensor_type
+        in: query
+        required: false
+        description: Filter tipe sensor.
+        schema:
+          type: string
+          enum:
+          - temperature
+          - humidity
+          - pressure
+          - light
+          - gas
+          - motion
+          - voltage
+          - other
+      responses:
+        '200':
+          description: Daftar berhalaman
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Sensor'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Sensors
+      summary: Buat sensor baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorInput'
+      responses:
+        '201':
+          description: Sensor dibuat
+          headers:
+            Location:
+              description: URL resource baru
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Sensor'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /sensors/{sensor_id}:
+    parameters:
+    - name: sensor_id
+      in: path
+      required: true
+      description: ID sensor
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      tags:
+      - Sensors
+      summary: Detail sensor
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Sensor'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Sensors
+      summary: Ganti seluruh field sensor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorInput'
+      responses:
+        '200':
+          description: Berhasil diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Sensor'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+    patch:
+      tags:
+      - Sensors
+      summary: Ubah sebagian field sensor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorPatch'
+      responses:
+        '200':
+          description: Berhasil diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Sensor'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+    delete:
+      tags:
+      - Sensors
+      summary: Hapus sensor
+      responses:
+        '204':
+          description: Terhapus (tanpa body)
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /sensors/{sensor_id}/stats:
+    parameters:
+    - name: sensor_id
+      in: path
+      required: true
+      description: ID sensor
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      tags:
+      - Sensors
+      summary: Statistik pembacaan sensor
+      description: Jumlah, min, rata-rata, maks, dan pembacaan terakhir pada rentang waktu opsional.
+      parameters:
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Statistik
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SensorStats'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /alert-rules:
+    get:
+      tags:
+      - Alert Rules
+      summary: Daftar aturan alert (filter, pencarian, sorting, pagination)
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PerPage'
+      - name: sort
+        in: query
+        required: false
+        description: 'Urutkan: daftar field dipisah koma, awalan `-` = descending. Field yang boleh: name, threshold, created_at.'
+        schema:
+          type: string
+          default: -created_at
+        example: -created_at
+      - name: sensor_id
+        in: query
+        required: false
+        description: Filter sensor.
+        schema:
+          type: integer
+      - name: severity
+        in: query
+        required: false
+        description: Filter severity.
+        schema:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+      - name: is_active
+        in: query
+        required: false
+        description: Filter aturan aktif/nonaktif.
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Daftar berhalaman
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AlertRule'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Alert Rules
+      summary: Buat aturan alert baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRuleInput'
+      responses:
+        '201':
+          description: Aturan alert dibuat
+          headers:
+            Location:
+              description: URL resource baru
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AlertRule'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /alert-rules/{rule_id}:
+    parameters:
+    - name: rule_id
+      in: path
+      required: true
+      description: ID aturan
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      tags:
+      - Alert Rules
+      summary: Detail aturan alert
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AlertRule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Alert Rules
+      summary: Ganti seluruh field aturan alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRuleInput'
+      responses:
+        '200':
+          description: Berhasil diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AlertRule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+    patch:
+      tags:
+      - Alert Rules
+      summary: Ubah sebagian field aturan alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRulePatch'
+      responses:
+        '200':
+          description: Berhasil diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AlertRule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+    delete:
+      tags:
+      - Alert Rules
+      summary: Hapus aturan alert
+      responses:
+        '204':
+          description: Terhapus (tanpa body)
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /telemetry:
+    get:
+      tags:
+      - Telemetry
+      summary: Daftar pembacaan sensor (filter waktu, sorting, pagination)
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PerPage'
+      - name: sort
+        in: query
+        required: false
+        description: 'Urutkan: daftar field dipisah koma, awalan `-` = descending. Field yang boleh: recorded_at, value.'
+        schema:
+          type: string
+          default: -recorded_at
+        example: -recorded_at
+      - name: sensor_id
+        in: query
+        required: false
+        description: Filter sensor.
+        schema:
+          type: integer
+      - name: device_id
+        in: query
+        required: false
+        description: Filter perangkat.
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Daftar berhalaman
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reading'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Telemetry
+      summary: Kirim satu pembacaan sensor
+      description: Memperbarui `last_seen_at` perangkat dan mengevaluasi aturan alert. Response menyertakan alert yang terpicu.
+        Ditolak 409 bila perangkat tidak `active`, 422 bila nilai di luar rentang fisik sensor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadingCreate'
+      responses:
+        '201':
+          description: Pembacaan tersimpan
+          headers:
+            Location:
+              description: URL resource baru
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReadingCreated'
+        '409':
+          description: Perangkat tidak aktif.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: DEVICE_NOT_ACTIVE
+                  message: Device 'Node Lab' is maintenance; telemetry is only accepted from active devices.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /telemetry/{reading_id}:
+    parameters:
+    - name: reading_id
+      in: path
+      required: true
+      description: ID pembacaan
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      tags:
+      - Telemetry
+      summary: Detail pembacaan
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Reading'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Telemetry
+      summary: Hapus pembacaan
+      description: Alert yang dihasilkan tetap ada (reading_id menjadi null).
+      responses:
+        '204':
+          description: Terhapus (tanpa body)
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+      - {}
+      - ApiKeyAuth: []
+  /alerts:
+    get:
+      tags:
+      - Alerts
+      summary: Daftar alert (filter, sorting, pagination)
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/PerPage'
+      - name: sort
+        in: query
+        required: false
+        description: 'Urutkan: daftar field dipisah koma, awalan `-` = descending. Field yang boleh: triggered_at, status.'
+        schema:
+          type: string
+          default: -triggered_at
+        example: -triggered_at
+      - name: status
+        in: query
+        required: false
+        description: Filter status.
+        schema:
+          type: string
+          enum:
+          - open
+          - acknowledged
+          - resolved
+      - name: severity
+        in: query
+        required: false
+        description: Filter severity.
+        schema:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+      - name: sensor_id
+        in: query
+        required: false
+        description: Filter sensor.
+        schema:
+          type: integer
+      - name: device_id
+        in: query
+        required: false
+        description: Filter perangkat.
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Daftar berhalaman
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /alerts/{alert_id}:
+    parameters:
+    - name: alert_id
+      in: path
+      required: true
+      description: ID alert
+      schema:
+        type: integer
+        minimum: 1
+    get:
+      tags:
+      - Alerts
+      summary: Detail alert
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Alert'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+      - Alerts
+      summary: Ubah status alert
+      description: 'Transisi valid: open → acknowledged → resolved, atau open → resolved. Selain itu 409.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertUpdate'
+      responses:
+        '200':
+          description: Status diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Alert'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Transisi status tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: INVALID_STATE_TRANSITION
+                  message: Cannot change alert status from 'resolved' to 'acknowledged'.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+      - {}
+      - ApiKeyAuth: []
+components:
+  schemas:
+    PageMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 42
+        pages:
+          type: integer
+          example: 3
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Input validation failed.
+            details:
+              type: object
+              additionalProperties: true
+              example:
+                serial_number:
+                - Missing data for required field.
+          required:
+          - code
+          - message
+      required:
+      - error
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        database:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: 1.0.0
+    UserCreate:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: ^[A-Za-z0-9_.-]+$
+          example: budi
+        email:
+          type: string
+          format: email
+          maxLength: 120
+          example: budi@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          writeOnly: true
+          description: Minimal 8 karakter, mengandung huruf dan angka.
+          example: Password123
+        role:
+          type: string
+          enum:
+          - admin
+          - operator
+          - viewer
+          default: operator
+      required:
+      - username
+      - email
+      - password
+      example:
+        username: andi
+        email: andi@example.com
+        password: Password123
+        role: operator
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 2
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: ^[A-Za-z0-9_.-]+$
+          example: budi
+        email:
+          type: string
+          format: email
+          maxLength: 120
+          example: budi@example.com
+        role:
+          type: string
+          enum:
+          - admin
+          - operator
+          - viewer
+          default: operator
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+    DeviceInput:
+      type: object
+      properties:
+        owner_id:
+          type: integer
+          minimum: 1
+          example: 2
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Node Dapur
+        serial_number:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+          example: ESP32-DP-001
+        device_type:
+          type: string
+          enum:
+          - esp32
+          - esp8266
+          - raspberry_pi
+          - gateway
+          - other
+        location:
+          type: string
+          nullable: true
+          maxLength: 120
+          example: Dapur
+        status:
+          type: string
+          enum:
+          - active
+          - inactive
+          - maintenance
+          default: active
+        firmware_version:
+          type: string
+          nullable: true
+          maxLength: 30
+          example: 1.2.0
+      required:
+      - owner_id
+      - name
+      - serial_number
+      - device_type
+      example:
+        owner_id: 2
+        name: Node Dapur
+        serial_number: ESP32-DP-001
+        device_type: esp32
+        location: Dapur
+    DevicePatch:
+      type: object
+      properties:
+        owner_id:
+          type: integer
+          minimum: 1
+          example: 2
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Node Dapur
+        serial_number:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+          example: ESP32-DP-001
+        device_type:
+          type: string
+          enum:
+          - esp32
+          - esp8266
+          - raspberry_pi
+          - gateway
+          - other
+        location:
+          type: string
+          nullable: true
+          maxLength: 120
+          example: Dapur
+        status:
+          type: string
+          enum:
+          - active
+          - inactive
+          - maintenance
+          default: active
+        firmware_version:
+          type: string
+          nullable: true
+          maxLength: 30
+          example: 1.2.0
+      example:
+        status: maintenance
+    Device:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 6
+        owner_id:
+          type: integer
+          minimum: 1
+          example: 2
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Node Dapur
+        serial_number:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[A-Za-z0-9][A-Za-z0-9_.:-]*$
+          example: ESP32-DP-001
+        device_type:
+          type: string
+          enum:
+          - esp32
+          - esp8266
+          - raspberry_pi
+          - gateway
+          - other
+        location:
+          type: string
+          nullable: true
+          maxLength: 120
+          example: Dapur
+        status:
+          type: string
+          enum:
+          - active
+          - inactive
+          - maintenance
+          default: active
+        firmware_version:
+          type: string
+          nullable: true
+          maxLength: 30
+          example: 1.2.0
+        last_seen_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+    SensorInput:
+      type: object
+      properties:
+        device_id:
+          type: integer
+          minimum: 1
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Suhu Dapur
+        sensor_type:
+          type: string
+          enum:
+          - temperature
+          - humidity
+          - pressure
+          - light
+          - gas
+          - motion
+          - voltage
+          - other
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: °C
+        min_value:
+          type: number
+          nullable: true
+          example: -40
+          description: Batas bawah fisik sensor; harus < max_value.
+        max_value:
+          type: number
+          nullable: true
+          example: 125
+      required:
+      - device_id
+      - name
+      - sensor_type
+      - unit
+      example:
+        device_id: 1
+        name: Suhu Dapur
+        sensor_type: temperature
+        unit: °C
+        min_value: -40
+        max_value: 125
+    SensorPatch:
+      type: object
+      properties:
+        device_id:
+          type: integer
+          minimum: 1
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Suhu Dapur
+        sensor_type:
+          type: string
+          enum:
+          - temperature
+          - humidity
+          - pressure
+          - light
+          - gas
+          - motion
+          - voltage
+          - other
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: °C
+        min_value:
+          type: number
+          nullable: true
+          example: -40
+          description: Batas bawah fisik sensor; harus < max_value.
+        max_value:
+          type: number
+          nullable: true
+          example: 125
+      example:
+        unit: °F
+    Sensor:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        device_id:
+          type: integer
+          minimum: 1
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Suhu Dapur
+        sensor_type:
+          type: string
+          enum:
+          - temperature
+          - humidity
+          - pressure
+          - light
+          - gas
+          - motion
+          - voltage
+          - other
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: °C
+        min_value:
+          type: number
+          nullable: true
+          example: -40
+          description: Batas bawah fisik sensor; harus < max_value.
+        max_value:
+          type: number
+          nullable: true
+          example: 125
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+    ReadingCreate:
+      type: object
+      properties:
+        sensor_id:
+          type: integer
+          minimum: 1
+          example: 1
+        value:
+          type: number
+          example: 38.5
+        recorded_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+          nullable: true
+          description: 'Opsional (UTC atau dengan offset). Default: waktu server. Tidak boleh lebih dari 5 menit di masa depan.'
+      required:
+      - sensor_id
+      - value
+      example:
+        sensor_id: 1
+        value: 38.5
+    Reading:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 337
+        sensor_id:
+          type: integer
+          example: 1
+        value:
+          type: number
+          example: 38.5
+        recorded_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+    ReadingCreated:
+      allOf:
+      - $ref: '#/components/schemas/Reading'
+      - type: object
+        properties:
+          triggered_alerts:
+            type: array
+            items:
+              $ref: '#/components/schemas/Alert'
+    AlertRuleInput:
+      type: object
+      properties:
+        sensor_id:
+          type: integer
+          minimum: 1
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Gudang terlalu panas
+        operator:
+          type: string
+          enum:
+          - gt
+          - gte
+          - lt
+          - lte
+          description: gt `>`, gte `>=`, lt `<`, lte `<=`
+        threshold:
+          type: number
+          example: 35
+        severity:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+          default: medium
+        is_active:
+          type: boolean
+          default: true
+      required:
+      - sensor_id
+      - name
+      - operator
+      - threshold
+      example:
+        sensor_id: 1
+        name: Gudang terlalu panas
+        operator: gt
+        threshold: 35
+        severity: high
+    AlertRulePatch:
+      type: object
+      properties:
+        sensor_id:
+          type: integer
+          minimum: 1
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Gudang terlalu panas
+        operator:
+          type: string
+          enum:
+          - gt
+          - gte
+          - lt
+          - lte
+          description: gt `>`, gte `>=`, lt `<`, lte `<=`
+        threshold:
+          type: number
+          example: 35
+        severity:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+          default: medium
+        is_active:
+          type: boolean
+          default: true
+      example:
+        is_active: false
+    AlertRule:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        sensor_id:
+          type: integer
+          minimum: 1
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Gudang terlalu panas
+        operator:
+          type: string
+          enum:
+          - gt
+          - gte
+          - lt
+          - lte
+          description: gt `>`, gte `>=`, lt `<`, lte `<=`
+        threshold:
+          type: number
+          example: 35
+        severity:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+          default: medium
+        is_active:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+    Alert:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5
+        rule_id:
+          type: integer
+          example: 1
+        sensor_id:
+          type: integer
+          example: 1
+        device_id:
+          type: integer
+          example: 1
+        reading_id:
+          type: integer
+          nullable: true
+          example: 337
+        severity:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+        message:
+          type: string
+          example: 'Suhu Gudang A on Node Gudang A: reading 38.5 °C violates rule ''Gudang terlalu panas'' (> 35 °C)'
+        status:
+          type: string
+          enum:
+          - open
+          - acknowledged
+          - resolved
+        triggered_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+        acknowledged_by_id:
+          type: integer
+          nullable: true
+        acknowledged_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          example: '2026-11-26T02:03:22.747Z'
+          nullable: true
+    AlertUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - open
+          - acknowledged
+          - resolved
+          description: 'Transisi valid: open → acknowledged → resolved, atau open → resolved.'
+        acknowledged_by_id:
+          type: integer
+          nullable: true
+          minimum: 1
+      required:
+      - status
+      example:
+        status: acknowledged
+        acknowledged_by_id: 1
+    SensorStats:
+      type: object
+      properties:
+        sensor_id:
+          type: integer
+        unit:
+          type: string
+        count:
+          type: integer
+          example: 48
+        min:
+          type: number
+          nullable: true
+        avg:
+          type: number
+          nullable: true
+        max:
+          type: number
+          nullable: true
+        latest:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/Reading'
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Nomor halaman.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      description: Jumlah data per halaman (maks. 100).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    From:
+      name: from
+      in: query
+      required: false
+      description: Batas awal waktu (UTC, mis. `2026-01-01T00:00:00Z`; gunakan `%2B` untuk offset `+`).
+      schema:
+        type: string
+        format: date-time
+      example: '2026-01-01T00:00:00Z'
+    To:
+      name: to
+      in: query
+      required: false
+      description: Batas akhir waktu (UTC).
+      schema:
+        type: string
+        format: date-time
+      example: '2026-12-31T23:59:59Z'
+  responses:
+    BadRequest:
+      description: Body bukan JSON yang valid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: INVALID_JSON
+              message: Request body is not valid JSON.
+    Unauthorized:
+      description: API key tidak ada/salah (hanya bila server memakai API_KEY).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Missing or invalid API key.
+    NotFound:
+      description: Resource tidak ditemukan.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Device with id 999 was not found.
+    Conflict:
+      description: Konflik data (duplikat unik, relasi masih dipakai, atau transisi status tidak valid).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: CONFLICT
+              message: Device with serial_number 'ESP32-GA-001' already exists.
+              details:
+                serial_number:
+                - Must be unique.
+    UnsupportedMediaType:
+      description: Content-Type bukan application/json.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNSUPPORTED_MEDIA_TYPE
+              message: Content-Type must be application/json.
+    ValidationError:
+      description: Input tidak lolos validasi.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Input validation failed.
+              details:
+                device_type:
+                - 'Must be one of: esp32, esp8266, raspberry_pi, gateway, other.'
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Hanya diperlukan untuk request tulis bila server dikonfigurasi dengan API_KEY.
