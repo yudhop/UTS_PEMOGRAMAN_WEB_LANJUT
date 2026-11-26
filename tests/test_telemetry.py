@@ -150,3 +150,12 @@ def test_get_and_delete_reading(client, sensor):
     assert client.get(f"{URL}/{reading_id}").status_code == 200
     assert client.delete(f"{URL}/{reading_id}").status_code == 204
     assert client.get(f"{URL}/{reading_id}").status_code == 404
+
+
+def test_deleting_reading_keeps_alert_history(client, sensor):
+    create_rule(sensor, operator="gt", threshold=30.0)
+    created = client.post(URL, json={"sensor_id": sensor.id, "value": 50}).get_json()["data"]
+
+    assert client.delete(f"{URL}/{created['id']}").status_code == 204
+    alert = client.get(f"/api/v1/alerts/{created['triggered_alerts'][0]['id']}").get_json()["data"]
+    assert alert["reading_id"] is None
