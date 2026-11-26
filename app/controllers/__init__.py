@@ -9,6 +9,7 @@ def register_blueprints(app):
     from .alert_rule_controller import bp as alert_rule_bp
     from .telemetry_controller import bp as telemetry_bp
     from .alert_controller import bp as alert_bp
+    from .docs_controller import bp as docs_bp
 
-    for blueprint in (health_bp, user_bp, device_bp, sensor_bp, alert_rule_bp, telemetry_bp, alert_bp):
+    for blueprint in (health_bp, user_bp, device_bp, sensor_bp, alert_rule_bp, telemetry_bp, alert_bp, docs_bp):
         app.register_blueprint(blueprint)
