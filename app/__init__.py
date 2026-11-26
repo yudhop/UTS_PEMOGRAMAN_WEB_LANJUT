@@ -25,4 +25,7 @@ def create_app(config_name=None):
     register_security(app)
     register_blueprints(app)
 
+    from .cli import register_cli
+
+    register_cli(app)
     return app
