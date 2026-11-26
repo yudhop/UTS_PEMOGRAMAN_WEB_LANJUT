@@ -6,6 +6,7 @@ def register_blueprints(app):
     from .user_controller import bp as user_bp
     from .device_controller import bp as device_bp
     from .sensor_controller import bp as sensor_bp
+    from .alert_rule_controller import bp as alert_rule_bp
 
-    for blueprint in (health_bp, user_bp, device_bp, sensor_bp):
+    for blueprint in (health_bp, user_bp, device_bp, sensor_bp, alert_rule_bp):
         app.register_blueprint(blueprint)
